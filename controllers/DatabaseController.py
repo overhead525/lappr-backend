@@ -1,5 +1,6 @@
-from sqlalchemy import create_engine
-from typing import List
+from sqlalchemy import (MetaData, Table, Column, Integer, Numeric, String,
+                        DateTime, ForeignKey, Boolean, create_engine, select, text)
+from typing import List, Dict, Tuple
 from .types import User, DiffObject, TransactionObject, PortfolioObject, PortfolioDiff
 
 
@@ -8,8 +9,51 @@ class DatabaseController:
     This class is responsible for interfacing any actions to the database
     """
 
-    engine = create_engine("mysql+pymysql://root:alpha298@localhost:3306/sakila")
+    conn_string = "mysql+pymysql://root:alpha298@localhost:3306/test_schema"
+    connection = None
+    metadata = MetaData()
+    engine = None
     sns_client = None
+
+    # Default table structure
+    groups = Table('groups',
+                   metadata,
+                   Column('uuid', String(34), primary_key=True),
+                   Column('group_name', String(24)),
+                   Column('group_leader', String(28))
+                   )
+    global_transactions = Table('global_transactions',
+                                metadata,
+                                Column('transaction_id', String(34), primary_key=True),
+                                Column('timestamp', DateTime()),
+                                Column('order_type', String(8)),
+                                Column('currency', String(5)),
+                                Column('paid_with', String(5)),
+                                Column('order_amount', Numeric(24, 10)),
+                                Column('from', String(1028)),
+                                Column('to', String(1028))
+                                )
+    portfolio_updates = Table('portfolio_updates',
+                              metadata,
+                              Column('portfolio_id', String(34), primary_key=True),
+                              Column('portfolio', String(2056)),
+                              Column('date_of_update', DateTime()),
+                              Column('username', String(28), index=True)
+                              )
+    users = Table('users',
+                  metadata,
+                  Column('user_id', String(34), primary_key=True),
+                  Column('username', String(28), index=True)
+                  )
+
+    def createTable(self, table_name: str, columns: List[Column]) -> Table:
+        return Table(table_name, self.metadata, *columns)
+
+    def db_init(self, conn_string) -> List[str]:
+        self.engine = create_engine(conn_string)
+        self.connection = self.engine.connect()
+        self.metadata.create_all(self.engine)
+        return list(self.metadata.tables.keys())
 
     def initialize_tables(self, reset: bool) -> None:
         """
@@ -103,7 +147,6 @@ class DatabaseController:
                             order_amount: float,
                             from_obj: DiffObject,
                             to_obj: DiffObject) -> None:
-
         """
         *There are NO 'update' or 'delete' methods for use with transactions*\n
         This method:
