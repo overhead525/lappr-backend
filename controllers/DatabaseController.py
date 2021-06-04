@@ -1,7 +1,11 @@
 from sqlalchemy import (MetaData, Table, Column, Integer, Numeric, String,
                         DateTime, ForeignKey, Boolean, create_engine, select, text)
+from sqlalchemy.ext.declarative import declarative_base
 from typing import List, Dict, Tuple
 from .types import User, DiffObject, TransactionObject, PortfolioObject, PortfolioDiff
+from uuid import uuid4
+
+Base = declarative_base()
 
 
 class DatabaseController:
@@ -19,7 +23,7 @@ class DatabaseController:
     groups = Table('groups',
                    metadata,
                    Column('uuid', String(34), primary_key=True),
-                   Column('group_name', String(24)),
+                   Column('group_name', String(24), index=True),
                    Column('group_leader', String(28))
                    )
     global_transactions = Table('global_transactions',
@@ -46,32 +50,43 @@ class DatabaseController:
                   Column('username', String(28), index=True)
                   )
 
-    def createTable(self, table_name: str, columns: List[Column]) -> Table:
-        return Table(table_name, self.metadata, *columns)
+    def delete_everything(self):
+        self.metadata.drop_all(self.engine)
 
-    def db_init(self, conn_string) -> List[str]:
+    def db_init(self, conn_string) -> None:
         self.engine = create_engine(conn_string)
         self.connection = self.engine.connect()
+
+    def initialize_tables(self) -> List[str]:
+        """
+        This resets tables back to default state. No groups. No users. No transactions...
+        :return: List of current table names
+        """
         self.metadata.create_all(self.engine)
-        return list(self.metadata.tables.keys())
+        table_names = list(self.metadata.tables.keys())
+        return table_names
 
-    def initialize_tables(self, reset: bool) -> None:
-        """
-        Checks for an existing table structure.
-        Depending on the args, it will either rest the tables to their
-        default (wiping existing data), or it will create new tables
-        :param reset: A boolean indicating whether or not to reset the table structure to default
-        :return: Nothing...
-        """
-
-    def create_new_group(self, group_name: str, group_leader: str) -> None:
+    def create_new_group(self, group_name: str, group_leader: str) -> str:
         """
         Creates a new group and appoints a new leader as the first member of the
         newly created group.
         :param group_name: Name of the group
         :param group_leader: User whose role is leader of the group
-        :return: Nothing...
+        :return: UUID of the new group table
         """
+        new_uuid = str(uuid4()).replace("-", "_")
+        new_group_sql = text(
+            f"""INSERT INTO groups (uuid, group_name, group_leader) 
+                VALUES ({new_uuid}, {group_name}, {group_leader})"""
+        )
+        new_table_columns = [
+            Column('role', String(6)),
+            Column('username', String(28), primary_key=True),
+            Column('joined_date', DateTime())
+        ]
+        self.create_table(new_uuid, new_table_columns)
+        self.metadata.create_all(self.engine)
+        return new_uuid
 
     def add_user_to_group(self, role: str, username: str, group_name: str) -> None:
         """
