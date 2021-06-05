@@ -5,12 +5,29 @@ from sqlalchemy import text
 test_conn_string = "mysql+pymysql://root:alpha298@localhost:3306/test_schema"
 
 
+class BaseDatabaseTester:
+    db_controller = None
+
+    def setup(self):
+        self.db_controller = DatabaseController()
+        self.db_controller.db_init(test_conn_string)
+        self.db_controller.initialize_tables()
+
+    def cleanup(self):
+        self.db_controller.connection.close()
+        self.db_controller.metadata.drop_all(self.db_controller.engine)
+
+
 class TestDatabaseInitialization(TestCase):
     def test_db_init(self):
         db_controller = DatabaseController()
         db_controller.db_init(test_conn_string)
         self.assertIsNotNone(db_controller.engine)
         self.assertIsNotNone(db_controller.connection)
+
+        # Cleanup
+        db_controller.connection.close()
+        db_controller.metadata.drop_all(db_controller.engine)
 
     def test_initialize_tables(self):
         db_controller = DatabaseController()
@@ -29,17 +46,16 @@ class TestDatabaseInitialization(TestCase):
         db_controller.connection.close()
         db_controller.metadata.drop_all(db_controller.engine)
 
+
+class TestDatabaseAddFeatures(TestCase, BaseDatabaseTester):
     def test_create_new_group(self):
+        self.setup()
+
         group_name = "Jammin"
         group_leader = "marcus254"
 
-        db_controller = DatabaseController()
-        db_controller.db_init(test_conn_string)
-        db_controller.initialize_tables()
-        group_table_name = db_controller.create_new_group(group_name, group_leader)
-        curr_tables = list(db_controller.metadata.tables.keys())
-        self.assertIn(group_table_name, curr_tables)
+        new_group_id = self.db_controller.create_new_group(group_name, group_leader)
+        self.assertIn(new_group_id, self.db_controller.later_tables.keys())
+        self.assertIn(new_group_id, list(self.db_controller.metadata.tables.keys()))
 
-        sql = text(f"""SELECT 1 FROM {group_table_name}""")
-        result = db_controller.connection.execute(sql)
-        print(result)
+        self.cleanup()
