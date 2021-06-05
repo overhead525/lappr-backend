@@ -1,5 +1,6 @@
 from sqlalchemy import (MetaData, Table, Column, Integer, Numeric, String,
-                        DateTime, ForeignKey, Boolean, create_engine, select, text)
+                        DateTime, ForeignKey, Boolean, create_engine, select, text,
+                        insert)
 from sqlalchemy.ext.declarative import declarative_base
 from typing import List, Dict, Tuple
 from .types import User, DiffObject, TransactionObject, PortfolioObject, PortfolioDiff
@@ -18,17 +19,18 @@ class DatabaseController:
     metadata = MetaData()
     engine = None
     sns_client = None
+    later_tables: Dict[str, Table] = {}
 
     # Default table structure
     groups = Table('groups',
                    metadata,
-                   Column('uuid', String(34), primary_key=True),
+                   Column('uuid', String(50), primary_key=True),
                    Column('group_name', String(24), index=True),
                    Column('group_leader', String(28))
                    )
     global_transactions = Table('global_transactions',
                                 metadata,
-                                Column('transaction_id', String(34), primary_key=True),
+                                Column('transaction_id', String(50), primary_key=True),
                                 Column('timestamp', DateTime()),
                                 Column('order_type', String(8)),
                                 Column('currency', String(5)),
@@ -39,19 +41,24 @@ class DatabaseController:
                                 )
     portfolio_updates = Table('portfolio_updates',
                               metadata,
-                              Column('portfolio_id', String(34), primary_key=True),
+                              Column('portfolio_id', String(50), primary_key=True),
                               Column('portfolio', String(2056)),
                               Column('date_of_update', DateTime()),
                               Column('username', String(28), index=True)
                               )
     users = Table('users',
                   metadata,
-                  Column('user_id', String(34), primary_key=True),
+                  Column('user_id', String(50), primary_key=True),
                   Column('username', String(28), index=True)
                   )
 
     def delete_everything(self):
         self.metadata.drop_all(self.engine)
+        self.later_tables = {}
+
+    def create_table(self, table_name: str, columns: List[Column]):
+        self.later_tables[table_name] = (Table(table_name, self.metadata, *columns))
+        self.metadata.create_all(self.engine)
 
     def db_init(self, conn_string) -> None:
         self.engine = create_engine(conn_string)
@@ -75,17 +82,14 @@ class DatabaseController:
         :return: UUID of the new group table
         """
         new_uuid = str(uuid4()).replace("-", "_")
-        new_group_sql = text(
-            f"""INSERT INTO groups (uuid, group_name, group_leader) 
-                VALUES ({new_uuid}, {group_name}, {group_leader})"""
-        )
+        new_group_sql = (insert(self.groups).values(uuid=new_uuid, group_name=group_name, group_leader=group_leader))
         new_table_columns = [
             Column('role', String(6)),
             Column('username', String(28), primary_key=True),
             Column('joined_date', DateTime())
         ]
         self.create_table(new_uuid, new_table_columns)
-        self.metadata.create_all(self.engine)
+        self.connection.execute(new_group_sql)
         return new_uuid
 
     def add_user_to_group(self, role: str, username: str, group_name: str) -> None:
