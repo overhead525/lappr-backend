@@ -1,0 +1,2 @@
+python manage.py test tests.test_database_controller.TestDatabaseInitialization
+python manage.py test tests.test_database_controller.TestDatabaseAddFeatures
