@@ -23,6 +23,10 @@ From = DiffObject
 To = DiffObject
 TransactionObject = Tuple[TransactionID, Timestamp, OrderType, Currency, PaidWith, OrderAmount, From, To]
 
+Role = str
+JoinedDate = datetime
+GroupMemberRow = Tuple[Role, Username, JoinedDate]
+
 
 class User:
     role: str

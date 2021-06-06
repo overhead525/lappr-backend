@@ -4,7 +4,9 @@ from sqlalchemy import (MetaData, Table, Column, Integer, Numeric, String,
 from sqlalchemy.ext.declarative import declarative_base
 from typing import List, Dict, Tuple
 from .types import User, DiffObject, TransactionObject, PortfolioObject, PortfolioDiff
-from uuid import uuid4
+from uuid import uuid4, UUID
+from datetime import datetime
+import pprint
 
 Base = declarative_base()
 
@@ -20,6 +22,7 @@ class DatabaseController:
     engine = None
     sns_client = None
     later_tables: Dict[str, Table] = {}
+    pp = pprint.PrettyPrinter(indent=4)
 
     # Default table structure
     groups = Table('groups',
@@ -51,6 +54,9 @@ class DatabaseController:
                   Column('user_id', String(50), primary_key=True),
                   Column('username', String(28), index=True)
                   )
+
+    def parse_uuid(self, raw_uuid: UUID) -> str:
+        return str(raw_uuid).replace("-", "_")
 
     def delete_everything(self):
         self.metadata.drop_all(self.engine)
@@ -90,6 +96,7 @@ class DatabaseController:
         ]
         self.create_table(new_uuid, new_table_columns)
         self.connection.execute(new_group_sql)
+        self.add_user_to_group("leader", group_leader, group_name)
         return new_uuid
 
     def add_user_to_group(self, role: str, username: str, group_name: str) -> None:
@@ -101,6 +108,16 @@ class DatabaseController:
         :param group_name: The group the user will join
         :return: Nothing...
         """
+        user_id = self.parse_uuid(uuid4())
+        new_user_sql = (insert(self.users).values(user_id=user_id, username=username))
+        self.connection.execute(new_user_sql)
+        group_id = self.get_group_id_from_name(group_name)
+        group_table = dict(self.metadata.tables)[group_id]
+
+        now = datetime.now().isoformat(sep=" ")
+        new_group_member_sql = (insert(group_table).values(role=role, username=username, joined_date=now))
+
+        self.connection.execute(new_group_member_sql)
 
     def get_users_from_group(self, group_name: str) -> List[User]:
         """
@@ -115,6 +132,10 @@ class DatabaseController:
         :param group_name:
         :return: A string representing the groupID of the group
         """
+        select_groups_row_sql = select(self.groups).where(self.groups.c.group_name == group_name)
+        group_row = list(self.connection.execute(select_groups_row_sql))[0]
+        group_id = group_row[0]
+        return group_id
 
     def delete_group(self, group_id: str) -> None:
         """
